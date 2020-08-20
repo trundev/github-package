@@ -14,7 +14,7 @@ on:
         default: "docker-pkg"
       VERSION:
         description: "Package version"
-        default: "v1.0"
+        default: "1.0"
 
 env:
   IMAGE_ID: "${{ github.ref }}"
@@ -48,12 +48,25 @@ jobs:
         dir -recurse
 
     - name: Publish Docker image
+      if: 'false'
       run: |
-        # Authenticate
+        echo "# Authenticate"
         echo ${{ secrets.GITHUB_TOKEN }} | docker login docker.pkg.github.com -u ${{ github.repository_owner }} --password-stdin
 
-        # Tag
+        echo "# Tag"
         docker tag ${{ env.IMAGE_ID }} docker.pkg.github.com/${{ github.repository }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
 
-        # Publish
+        echo "# Publish"
         docker push docker.pkg.github.com/${{ github.repository }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
+
+    - name: Publish NuGet package
+      if: 'true'
+      run: |
+        echo "# Authenticate"
+        dotnet nuget add source https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json -n github -u ${{ github.repository_owner }} -p ${{ secrets.GITHUB_TOKEN }}
+
+        echo "# Pack"
+        nuget pack -Version ${{ env.VERSION }}
+
+        echo "# Publish"
+        dotnet nuget push "*.nupkg" --source "github"
