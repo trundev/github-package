@@ -6,13 +6,20 @@ on:
   # To be triggered by "repository dispatch event"
   # https://docs.github.com/en/rest/reference/repos#create-a-repository-dispatch-event
   repository_dispatch:
-    types: [opened, deleted, event_type]
-  #workflow_dispatch:
+    types: [opened, deleted, my_event_type]
+  workflow_dispatch:
+    inputs:
+      IMAGE_NAME:
+        description: "Package name"
+        default: "docker-pkg"
+      VERSION:
+        description: "Package version"
+        default: "v1.0"
 
 env:
-  IMAGE_NAME: "docker-pkg"
-  VERSION: "v1.0"
   IMAGE_ID: "${{ github.ref }}"
+  IMAGE_NAME: "${{ github.event.inputs.IMAGE_NAME }}"
+  VERSION: "${{ github.event.inputs.VERSION }}"
 
 jobs:
   build:
