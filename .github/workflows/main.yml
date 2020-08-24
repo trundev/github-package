@@ -1,72 +1,30 @@
-name: Publish package
+name: Delete package
 
 on:
-  release:
-    types: [published]
-  # To be triggered by "repository dispatch event"
-  # https://docs.github.com/en/rest/reference/repos#create-a-repository-dispatch-event
-  repository_dispatch:
-    types: [opened, deleted, my_event_type]
   workflow_dispatch:
     inputs:
-      IMAGE_NAME:
+      VERSION_IDS:
+        description: "Package version IDs"
+        default: ""
+      REPO:
+        description: "Repo hosting the package"
+        default: ""
+      NAME:
         description: "Package name"
-        default: "docker-pkg"
-      VERSION:
-        description: "Package version"
-        default: "1.0"
-
-env:
-  IMAGE_ID: "${{ github.ref }}"
-  IMAGE_NAME: "${{ github.event.inputs.IMAGE_NAME }}"
-  VERSION: "${{ github.event.inputs.VERSION }}"
+        default: ""
+      NUM:
+        description: "The number of old versions to delete"
+        default: "1"
 
 jobs:
-  build:
+  delete:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v1
-
-    - name: Dump event payload
-      run: |
-        echo 'github.event_name ${{ github.event_name }}'
-        echo 'github.event_path ${{ github.event_path }}'
-        #echo 'github.event ${{ github.event }}'
-        if ("${{ github.event_path }}") { type ${{ github.event_path }} }
-
-    - name: Create sample content
-      run: |
-        mkdir output
-        pushd output
-
-        echo "Sample file created on $(date)" > readme.txt
-        mkdir subfolder
-        echo "Sample sub-folder created on $(date)" > subfolder/readme2.txt
-
-        popd
-        dir -recurse
-
-    - name: Publish Docker image
-      if: 'false'
-      run: |
-        echo "# Authenticate"
-        echo ${{ secrets.GITHUB_TOKEN }} | docker login docker.pkg.github.com -u ${{ github.repository_owner }} --password-stdin
-
-        echo "# Tag"
-        docker tag ${{ env.IMAGE_ID }} docker.pkg.github.com/${{ github.repository }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
-
-        echo "# Publish"
-        docker push docker.pkg.github.com/${{ github.repository }}/${{ env.IMAGE_NAME }}:${{ env.VERSION }}
-
-    - name: Publish NuGet package
-      if: 'true'
-      run: |
-        echo "# Authenticate"
-        dotnet nuget add source https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json -n github -u ${{ github.repository_owner }} -p ${{ secrets.GITHUB_TOKEN }}
-
-        echo "# Pack"
-        nuget pack -Version ${{ env.VERSION }}
-
-        echo "# Publish"
-        dotnet nuget push "*.nupkg" --source "github"
+    - uses: actions/delete-package-versions@v1
+      with:
+        package-version-ids: '${{ github.event.inputs.VERSION_IDS }}'
+        repo: '${{ github.event.inputs.REPO }}'
+        package-name: '${{ github.event.inputs.NAME }}'
+        num-old-versions-to-delete: '${{ github.event.inputs.NUM }}'
+        token: ${{ secrets.GITHUB_TOKEN }}
