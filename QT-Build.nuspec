@@ -1,14 +1,13 @@
 <?xml version="1.0"?>
 <package xmlns="http://schemas.microsoft.com/packaging/2013/01/nuspec.xsd">
   <metadata>
-    <id>test-github-package</id>
+    <id>QT-Build</id>
     <version>0.0</version>  <!-- To be overriden by "-Version" option -->
-    <description>This an experimental NuGet package to be pubished in GitHub</description>
+    <description>Prebuilt QT package to be used by GitHub actions</description>
     <authors>trundev</authors>
-    <repository type="git" url="https://github.com/trundev/github-package/" />
+    <repository type="git" url="https://github.com/trundev/github-package" />
   </metadata>
   <files>
-    <file src="github-api.bat"/>
-    <file src="output/**"/>
+    <file src="**"/>    <!-- "-BasePath" must point to the deployment dir -->
   </files>
 </package>
