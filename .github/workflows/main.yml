@@ -65,7 +65,7 @@ jobs:
       if: github.event.inputs.PUBLISH == 'true'
       run: |
         echo "# Authenticate"
-        dotnet nuget add source https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json -n github -u ${{ github.repository_owner }} -p ${{ secrets.GITHUB_TOKEN }}
+        dotnet nuget add source https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json -n github -u ${{ github.repository_owner }} -p ${{ secrets.REPO_TOKEN }}
 
         echo "# Publish"
         dotnet nuget push "*.nupkg" --source "github"

@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package xmlns="http://schemas.microsoft.com/packaging/2013/01/nuspec.xsd">
   <metadata>
-    <id>QT-Build</id>
+    <id>test-github-package</id>
     <version>0.0</version>  <!-- To be overriden by "-Version" option -->
     <description>Prebuilt QT package to be used by GitHub actions</description>
     <authors>trundev</authors>
