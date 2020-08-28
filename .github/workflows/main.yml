@@ -23,13 +23,24 @@ env:
 
 jobs:
   build:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false  # Try all matrix entries
+      matrix:
+        include:
+        #- os: windows-latest
+        #  powershell: true
+        #  bash_only: '#'
+        - os: ubuntu-latest
+          bash: true
+          powershell_only: '#'
 
+    runs-on: ${{ matrix.os }}
     env:
       vcvars_bat: '"C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"'
       QT_CONF: 'qtbase/bin/qt.conf' # Extract the QT_BUILD_TYPE from this file
-      QT_ROOT: '${{ github.workspace}}\..\qt'
-      QT_DEPLOY: '${{ github.workspace}}\..\deploy'
+      # Intermediate folders
+      QT_ROOT: '${{ github.workspace}}/../qt/'
+      QT_DEPLOY: '${{ github.workspace}}/../deploy/'
       MAKE_TOOL: make
 
     steps:
@@ -40,38 +51,105 @@ jobs:
         echo 'github.event_name ${{ github.event_name }}'
         echo 'github.event_path ${{ github.event_path }}'
         #echo 'github.event ${{ github.event }}'
-        if ("${{ github.event_path }}") { type ${{ github.event_path }} }
+        ${{ matrix.powershell_only }}if ("${{ github.event_path }}") { type ${{ github.event_path }} }
+        ${{ matrix.bash_only }}if [ -f ${{ github.event_path }} ]; then cat ${{ github.event_path }}; fi
 
     - name: Create sample content
       run: |
-        $deploy_dir = mkdir -Force "${{ env.QT_DEPLOY }}"
-        pushd ${{ env.QT_DEPLOY }}
+        mkdir "${{ env.QT_DEPLOY }}"
+        pushd "${{ env.QT_DEPLOY }}"
 
         echo "Sample file created on $(date)" > readme.txt
         mkdir subfolder
         echo "Sample sub-folder created on $(date)" > subfolder/readme2.txt
 
         popd
-        dir -recurse ${{ env.QT_DEPLOY }}
+        ${{ matrix.powershell_only }}dir -recurse ${{ env.QT_DEPLOY }}
+        ${{ matrix.bash_only }}ls -r ${{ env.QT_DEPLOY }}
 
+    #
+    # QT checkout/build
+    #
+    - name: Checkout QT
+      uses: actions/checkout@v1
+      with:
+        repository: qt/qt5
+        ref: ${{ env.QTVER }}
+        #submodules: 'true'
+        path: qt  # This is QT_ROOT
+
+    - name: Checkout qtbase submodule
+      run: git -C ${{ env.QT_ROOT }} submodule update --init qtbase
+
+    - name: Configure QT (windows)
+      if: matrix.powershell
+      run: |
+        cd ${{ env.QT_ROOT }}
+        $deploy_dir = mkdir -Force "${{ env.QT_DEPLOY }}"
+        echo "Run QT configure to $deploy_dir..."
+        .\configure.bat -prefix $deploy_dir -nomake examples -nomake tests -opensource -confirm-license
+
+    - name: Configure QT (linux)
+      if: matrix.bash
+      run: |
+        cd ${{ env.QT_ROOT }}
+        sudo apt-get install libgles2-mesa-dev
+        echo "Run QT configure to ${{ env.QT_DEPLOY }}..."
+        ./configure -prefix ${{ env.QT_DEPLOY }} -nomake examples -nomake tests -opensource -confirm-license
+
+    - name: Select QT_BUILD_TYPE and QT_BUILD_TYPE_EXT
+      run: |
+        cd ${{ env.QT_ROOT }}
+
+        # Obtain build type (TargetSpec)
+        ${{ matrix.powershell_only }}$QT_BUILD_TYPE = ""
+        ${{ matrix.powershell_only }}if ( Test-Path ${{ env.QT_CONF }} ) {
+        ${{ matrix.powershell_only }}  Get-Content ${{ env.QT_CONF }} | foreach-object { $n,$v = $_.Split("=", 2)
+        ${{ matrix.powershell_only }}    if ($n -eq "TargetSpec") { $QT_BUILD_TYPE = $v; echo "::set-env name=QT_BUILD_TYPE::$v" }
+        ${{ matrix.powershell_only }}  }
+        ${{ matrix.powershell_only }}}
+        ${{ matrix.bash_only }}QT_BUILD_TYPE=""
+        ${{ matrix.bash_only }}if [ -f ${{ env.QT_CONF }} ]; then
+        ${{ matrix.bash_only }}  QT_BUILD_TYPE=$(awk -F= '/TargetSpec *=/ {print $2}' ${{ env.QT_CONF }})
+        ${{ matrix.bash_only }}fi
+        echo "QT_BUILD_TYPE set to $QT_BUILD_TYPE"
+
+        # Append Visual Studio version
+        ${{ matrix.powershell_only }}$QT_BUILD_TYPE_EXT = $QT_BUILD_TYPE
+        ${{ matrix.powershell_only }}if ("${{ env.VisualStudioVersion }}") {
+        ${{ matrix.powershell_only }}  echo "  VisualStudioVersion is ${{ env.VisualStudioVersion }}"
+        ${{ matrix.powershell_only }}  $QT_BUILD_TYPE_EXT = "${QT_BUILD_TYPE_EXT}-v${{ env.VisualStudioVersion }}"
+        ${{ matrix.powershell_only }}}
+        ${{ matrix.bash_only }}QT_BUILD_TYPE_EXT=${QT_BUILD_TYPE/++/pp} # g++ -> gpp: Avoid '+' in NuGet version
+        echo "::set-env name=QT_BUILD_TYPE_EXT::$QT_BUILD_TYPE_EXT"
+        echo "QT_BUILD_TYPE_EXT set to $QT_BUILD_TYPE_EXT"
+
+    #
+    # Publish
+    #
     - name: Create NuGet package
       run: |
-        nuget pack -BasePath ${{ env.QT_DEPLOY }} -Version ${{ env.NUPKG_VER }}
+        ${{ matrix.bash_only }}sudo apt-get install nuget
+        nuget pack -BasePath ${{ env.QT_DEPLOY }} -Version ${{ env.NUPKG_VER }}-${{ env.QT_BUILD_TYPE_EXT }}
 
-        $package_name = $(Get-Item *.nupkg).Name
+        # Obtain package name
+        ${{ matrix.powershell_only }}$package_name = $(Get-Item *.nupkg).Name
+        ${{ matrix.bash_only }}package_name=$(echo *.nupkg)
         echo "::set-env name=NUPKG_NAME::$package_name"
 
     - name: Publish NuGet package
       if: github.event.inputs.PUBLISH == 'true'
       run: |
         echo "# Authenticate"
-        dotnet nuget add source https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json -n github -u ${{ github.repository_owner }} -p ${{ secrets.REPO_TOKEN }}
+        # Password encryption is not supported on Linux
+        ${{ matrix.bash_only }}opt=--store-password-in-clear-text
+        dotnet nuget add source https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json -n github -u ${{ github.repository_owner }} -p ${{ secrets.REPO_TOKEN }} $opt
 
         echo "# Publish"
-        dotnet nuget push "*.nupkg" --source "github"
+        dotnet nuget push "${{ env.NUPKG_NAME }}" --source "github"
 
     - uses: actions/upload-artifact@v1
       if: github.event.inputs.PUBLISH != 'true'
       with:
-        name: NuGet-package
+        name: NuGet-package-${{ matrix.os }}
         path: ${{ env.NUPKG_NAME }}
